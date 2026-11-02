@@ -1,0 +1,79 @@
+# ==============================================================================
+# Project: Modeling Road Traffic Crashes in Kwara State (2015-2021)
+# Author: Abdhamid Mubarak Alao
+# ==============================================================================
+
+# Install required packages if not already present
+# install.packages(c("MASS", "gamlss", "car"))
+
+library(MASS)      # For Negative Binomial Regression (glm.nb)
+library(gamlss)    # For Generalized Negative Binomial Regression
+library(car)       # For checking VIF/Multicollinearity
+
+# ------------------------------------------------------------------------------
+# 1. DATA PREPARATION
+# ------------------------------------------------------------------------------
+# Load your dataset 
+crash_data <- read.csv("road_traffic_crashes.csv")
+
+# Clean column names to match the script 
+colnames(crash_data) <- c("Cases", "Season", "Number_of_causes", "Vehicles_involved", "No_Injured", "No_Killed")
+
+# Decode 'Season' into a categorical factor. 
+# Setting January (0) as the base reference level as specified in the methodology.
+crash_data$Season <- factor(crash_data$Season, 
+                            levels = 0:11, 
+                            labels = c("Jan", "Feb", "March", "April", "May", "June", 
+                                       "July", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+# Define the model formula. 
+model_formula <- Cases ~ Season + Number_of_causes + No_Injured + No_Killed
+
+
+# ------------------------------------------------------------------------------
+# 2. POISSON REGRESSION MODEL (PRM) - Table 3.5 & 3.6
+# ------------------------------------------------------------------------------
+prm_model <- glm(model_formula, family = poisson(link = "log"), data = crash_data)
+
+cat("\n--- POISSON REGRESSION MODEL ---\n")
+summary(prm_model)
+
+# Goodness of fit (Deviance / df) to check for over-dispersion
+prm_dispersion <- prm_model$deviance / prm_model$df.residual
+cat("PRM Dispersion (Deviance/df):", prm_dispersion, "\n")
+
+
+# ------------------------------------------------------------------------------
+# 3. NEGATIVE BINOMIAL REGRESSION MODEL (NBRM) - Table 3.8 & 3.9
+# ------------------------------------------------------------------------------
+nbrm_model <- glm.nb(model_formula, data = crash_data)
+
+cat("\n--- NEGATIVE BINOMIAL REGRESSION MODEL ---\n")
+summary(nbrm_model)
+
+
+# ------------------------------------------------------------------------------
+# 4. GENERALIZED NEGATIVE BINOMIAL REGRESSION MODEL (GNBRM) - Table 3.10 & 3.11
+# ------------------------------------------------------------------------------
+# Using gamlss (Generalized Additive Models for Location Scale and Shape) to model 
+# the GNBR distribution, accommodating dynamic dispersion parameters.
+gnbrm_model <- gamlss(model_formula, family = NBI(), data = crash_data, trace = FALSE)
+
+cat("\n--- GENERALIZED NEGATIVE BINOMIAL REGRESSION MODEL ---\n")
+summary(gnbrm_model)
+
+
+# ------------------------------------------------------------------------------
+# 5. MODEL SELECTION TEST - Table 3.12
+# ------------------------------------------------------------------------------
+# Extracting Residual Deviance, AIC, and BIC for side-by-side comparison
+
+model_comparison <- data.frame(
+  Parameter = c("Residual Deviance", "AIC", "BIC"),
+  PRM = c(prm_model$deviance, AIC(prm_model), BIC(prm_model)),
+  NBRM = c(nbrm_model$deviance, AIC(nbrm_model), BIC(nbrm_model)),
+  GNBRM = c(gnbrm_model$G.deviance, AIC(gnbrm_model), BIC(gnbrm_model))
+)
+
+cat("\n--- MODEL SELECTION TEST (TABLE 3.12) ---\n")
+print(model_comparison)
